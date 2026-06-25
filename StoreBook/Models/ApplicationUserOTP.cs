@@ -1,5 +1,3 @@
-﻿using Fluent.Infrastructure.FluentModel;
-
 namespace StoreBook.Models
 {
     public class ApplicationUserOTP

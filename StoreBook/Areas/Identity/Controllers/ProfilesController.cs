@@ -1,5 +1,9 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Identity;
+using StoreBook.Models;
+using Mapster;
+using StoreBook.DTOs.Request;
 
 namespace StoreBook.Areas.Identity.Controllers
 {
@@ -30,7 +34,7 @@ namespace StoreBook.Areas.Identity.Controllers
                     description = "User not found"
                 });
 
-            var userVM = user.Adapt<ApplicationUserResponce>();
+            var userVM = user.Adapt<ApplicationUserResponse>();
 
             return Ok(userVM);
         }
@@ -39,7 +43,7 @@ namespace StoreBook.Areas.Identity.Controllers
         // POST: api/Profile/UpdateProfile
         // =============================
         [HttpPost("UpdateProfile")]
-        public async Task<IActionResult> UpdateProfile(ApplicationUserResponce model)
+        public async Task<IActionResult> UpdateProfile(ApplicationUserResponse model)
         {
             var user = await _userManager.GetUserAsync(User);
 
@@ -87,7 +91,7 @@ namespace StoreBook.Areas.Identity.Controllers
         // POST: api/Profile/UpdatePassword
         // =============================
         [HttpPost("UpdatePassword")]
-        public async Task<IActionResult> UpdatePassword(ApplicationUserResponce model)
+        public async Task<IActionResult> UpdatePassword(ApplicationUserResponse model)
         {
             var user = await _userManager.GetUserAsync(User);
 

@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using StoreBook.Models;
 using StoreBook.Repositories.IRepository;
@@ -7,6 +8,7 @@ namespace StoreBook.Areas.Admin.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class AuthersController : ControllerBase
     {
         public IRepository<Auther> _autherrepository { get; }
@@ -21,9 +23,9 @@ namespace StoreBook.Areas.Admin.Controllers
         [HttpGet]
         public async Task<IActionResult> Get(CancellationToken cancellationToken)
         {
-            var categories = await _autherrepository.GetAsync();
+            var authors = await _autherrepository.GetAsync();
 
-            return Ok(categories.AsEnumerable().ToList());
+            return Ok(authors.AsEnumerable().ToList());
         }
 
         [HttpPost("")]
@@ -43,12 +45,18 @@ namespace StoreBook.Areas.Admin.Controllers
 
             return Ok();
         }
-        [HttpDelete("id")]
+
+        [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
         {
-            var category = await _autherrepository.GetOneAsync(e => e.AutherId == id, cancellationToken: cancellationToken);
+            var author = await _autherrepository.GetOneAsync(e => e.AutherId == id, cancellationToken: cancellationToken);
 
-            _autherrepository.Delete(category!);
+            if (author is null)
+            {
+                return NotFound(new { message = "Author not found" });
+            }
+
+            _autherrepository.Delete(author);
             await _autherrepository.CommitAsync(cancellationToken);
 
             return Ok();

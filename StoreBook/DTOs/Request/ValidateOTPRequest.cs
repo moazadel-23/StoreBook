@@ -2,7 +2,7 @@
 
 namespace StoreBook.DTOs.Request
 {
-    public class valideOTPRequest
+    public class ValidateOTPRequest
     {
         [Required]
         public string OTP { get; set; } = string.Empty;

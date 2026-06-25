@@ -23,7 +23,7 @@ namespace StoreBook.Repositories.IRepository
          Task<T?> GetOneAsync(
          Expression<Func<T, bool>> expression,
          Expression<Func<T, object>>[]? include = null,
-         bool traced = true,
+         bool tracked = true,
          CancellationToken cancellationToken = default);
      
     }

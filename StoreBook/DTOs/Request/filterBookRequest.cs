@@ -1,10 +1,8 @@
-﻿using StoreBook.Models;
-
-namespace StoreBook.DTOs.Request
+﻿namespace StoreBook.DTOs.Request
 {
-    public class filterBookRequest
+    public class FilterBookRequest
     {
-        public string Titel { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public double Price { get; set; }
         public double Rate { get; set; }

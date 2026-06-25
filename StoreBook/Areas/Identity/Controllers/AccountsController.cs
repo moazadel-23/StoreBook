@@ -1,11 +1,6 @@
-﻿using Fluent.Infrastructure.FluentModel;
-using Mapster;
-using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
-using Microsoft.VisualStudio.Web.CodeGenerators.Mvc.Templates.BlazorIdentity.Pages;
 using StoreBook.DTOs.Request;
 using StoreBook.Repositories.IRepository;
 using StoreBook.Models;
@@ -29,25 +24,31 @@ namespace StoreBook.Areas.Identity.Controllers
             _applicationUserOtpRepository = ApplicationUserOtpRepository;
         }
         [HttpPost]
-        public async Task<IActionResult> Register(Microsoft.AspNetCore.Identity.Data.RegisterRequest registerRequest)
+        public async Task<IActionResult> Register(RegisterRequest registerRequest)
         {
-            ApplicationUser user = Request.Adapt<ApplicationUser>();
+            var user = new ApplicationUser
+            {
+                FirstName = registerRequest.FirstName,
+                LastName = registerRequest.LastName,
+                Email = registerRequest.Email,
+                UserName = registerRequest.UserName
+            };
 
             var result = await _userManager.CreateAsync(user, registerRequest.Password);
 
-            if (!(result.Succeeded))
+            if (!result.Succeeded)
             {
                 foreach (var item in result.Errors)
                 {
                     ModelState.AddModelError(string.Empty, item.Code);
                 }
 
-                return Ok(registerRequest);
+                return BadRequest(result.Errors);
             }
 
             // Send Confirmation Mail
-             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            var link = Url.Action(nameof(confirmEmail), "Account", new
+            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            var link = Url.Action(nameof(confirmEmail), "Accounts", new
             {
                 area = "Identity",
                 token,
@@ -147,17 +148,17 @@ namespace StoreBook.Areas.Identity.Controllers
             }
 
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            var link = Url.Action(nameof(confirmEmail), "Account", new
+            var link = Url.Action(nameof(confirmEmail), "Accounts", new
             {
                 area = "Identity",
                 token,
                 userId = user.Id
-            });
+            }, Request.Scheme);
             await _emailSender.SendEmailAsync(user.Email!, "Login Notification",
                 $"<h1>confirm your Email by Clicking<a href='{link}'>here</a></h1>");
 
 
-            return RedirectToAction("Login");
+            return Ok(new { msg = "Email confirmation token sent successfully" });
 
         }
 
@@ -201,27 +202,27 @@ namespace StoreBook.Areas.Identity.Controllers
                 $"<h1>Use this OTP:{otp} do not share it</h1>");
 
 
-            return RedirectToAction("valideOTP", new { userId = user.Id });
+            return Ok(new { msg = "OTP sent successfully", userId = user.Id });
 
         }
 
-        [HttpPost("valideOTP")]
-        public async Task<IActionResult> valideOTP(valideOTPRequest valideOTPVM)
+        [HttpPost("validateOTP")]
+        public async Task<IActionResult> validateOTP(ValidateOTPRequest validateOTPVM)
         {
-            var result = await _applicationUserOtpRepository.GetOneAsync(e => e.ApplicationUserId == valideOTPVM.ApplicationUserId && e.OTP == valideOTPVM.OTP && e.IsValid);
+            var result = await _applicationUserOtpRepository.GetOneAsync(e => e.ApplicationUserId == validateOTPVM.ApplicationUserId && e.OTP == validateOTPVM.OTP && e.IsValid);
 
             if (result is null)
             {
-                return RedirectToAction(nameof(valideOTPVM), new { userId = valideOTPVM.ApplicationUserId });
+                return BadRequest(new { msg = "Invalid or expired OTP" });
             }
 
-            return RedirectToAction("NewPassword", new { userId = valideOTPVM.ApplicationUserId });
+            return Ok(new { msg = "OTP verified successfully", userId = validateOTPVM.ApplicationUserId });
         }
 
-        [HttpGet("newPassword / {userId}")]
+        [HttpGet("newPassword/{userId}")]
         public IActionResult newPassword(string userId)
         {
-            return Ok(new valideOTPRequest
+            return Ok(new ValidateOTPRequest
             {
                 ApplicationUserId = userId
             });

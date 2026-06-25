@@ -1,4 +1,4 @@
-﻿using Azure.Core;
+using Azure.Core;
 using Mapster;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -7,12 +7,12 @@ using Microsoft.EntityFrameworkCore;
 using StoreBook.DTOs.Request;
 using StoreBook.Models;
 using StoreBook.Repositories.IRepository;
-using System.Threading.Tasks;
 
-namespace StoreBook.Areas
+namespace StoreBook.Areas.Admin.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class BooksController : ControllerBase
     {
         public IRepository<Book> _bookRepository { get; }
@@ -29,75 +29,85 @@ namespace StoreBook.Areas
         }
 
         [HttpGet("")]
-        public async Task<IActionResult> GetAll([FromQuery] filterBookRequest filterBookRequest, CancellationToken cancellationToken, int page)
+        public async Task<IActionResult> GetAll([FromQuery] FilterBookRequest filterBookRequest, CancellationToken cancellationToken, [FromQuery] int page = 1)
         {
             if (page < 1)
                 page = 1;
 
-            var book = await _bookRepository.GetAsync(include: new System.Linq.Expressions.Expression<Func<Book, object>>[]
+            System.Linq.Expressions.Expression<Func<Book, bool>>? filter = null;
+            if (!string.IsNullOrWhiteSpace(filterBookRequest.Title) && filterBookRequest.CategoryId > 0)
             {
-        e => e.Category!,
-        e => e.Brand!
-            }, tracked: false);
-
-            // فلترة العنوان
-            if (!string.IsNullOrWhiteSpace(filterBookRequest.Titel))
+                string titleTrim = filterBookRequest.Title.Trim();
+                filter = e => e.Title.Contains(titleTrim) && e.CategoryId == filterBookRequest.CategoryId;
+                filterBookRequest.Title = titleTrim;
+            }
+            else if (!string.IsNullOrWhiteSpace(filterBookRequest.Title))
             {
-                string TitelTrim = filterBookRequest.Titel.Trim();
-                book = book.Where(e => e.Title.Contains(TitelTrim, StringComparison.OrdinalIgnoreCase)).ToList();
-                filterBookRequest.Titel = TitelTrim;
+                string titleTrim = filterBookRequest.Title.Trim();
+                filter = e => e.Title.Contains(titleTrim);
+                filterBookRequest.Title = titleTrim;
+            }
+            else if (filterBookRequest.CategoryId > 0)
+            {
+                filter = e => e.CategoryId == filterBookRequest.CategoryId;
             }
 
+            var books = await _bookRepository.GetAsync(
+                expression: filter,
+                include: new System.Linq.Expressions.Expression<Func<Book, object>>[]
+                {
+                    e => e.Category!,
+                    e => e.Brand!
+                },
+                tracked: false,
+                CancellationToken: cancellationToken);
+
             // Pagination
-            int totalItems = book.Count();
+            int totalItems = books.Count();
             const int pageSize = 10;
             int totalPages = (int)Math.Ceiling(totalItems / (double)pageSize);
-            var bagenation = new BagenationRequest
+            var pagination = new PaginationRequest
             {
                 TotalPages = totalPages,
                 CurrentPage = page
             };
 
-            var booksOnPage = book.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            var booksOnPage = books.Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
             return Ok(new
             {
                 Books = booksOnPage,
-                Bagenation = bagenation,
+                Pagination = pagination,
                 filter = filterBookRequest
             });
         }
+
         [HttpPost("")]
         [Consumes("multipart/form-data")]
-        public async Task<IActionResult> Create([FromForm] CreateBookeRequest createBookeRequest, CancellationToken cancellationToken)
+        public async Task<IActionResult> Create([FromForm] CreateBookRequest createBookRequest, CancellationToken cancellationToken)
         {
             await using var transaction = await _DbContext.Database.BeginTransactionAsync(cancellationToken);
             try
             {
+                Book book = createBookRequest.Adapt<Book>();
 
-                Book book = Request.Adapt<Book>();
-                Book book1 = createBookeRequest.Adapt<Book>();
-
-                // Ensure directories exist
-                string root = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
-                string imagesRoot = Path.Combine(root, "images");
-                string productImagesRoot = Path.Combine(imagesRoot, "product_images");
-
+                // Ensure directory exists
+                string imagesRoot = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images");
                 Directory.CreateDirectory(imagesRoot);
-                Directory.CreateDirectory(productImagesRoot);
 
-                if (createBookeRequest.MainImg != null && createBookeRequest.MainImg.Length > 0)
+                if (createBookRequest.MainImg != null && createBookRequest.MainImg.Length > 0)
                 {
-                    string fileName = Guid.NewGuid().ToString() + Path.GetExtension(createBookeRequest.MainImg!.FileName);
-                    string filePath = Path.Combine(productImagesRoot, fileName);
+                    string fileName = Guid.NewGuid().ToString() + Path.GetExtension(createBookRequest.MainImg.FileName);
+                    string filePath = Path.Combine(imagesRoot, fileName);
 
                     await using (var stream = System.IO.File.Create(filePath))
                     {
-                        await createBookeRequest.MainImg.CopyToAsync(stream, cancellationToken);
+                        await createBookRequest.MainImg.CopyToAsync(stream, cancellationToken);
                     }
 
-                    createBookeRequest.ImageName = fileName;
+                    book.Img = fileName;
                 }
+
                 var bookCreated = await _bookRepository.AddAsync(book, cancellationToken);
                 await _bookRepository.CommitAsync(cancellationToken);
 
@@ -109,7 +119,7 @@ namespace StoreBook.Areas
                     BookId = bookCreated.BookId
                 });
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 return BadRequest(new
                 {
@@ -122,39 +132,44 @@ namespace StoreBook.Areas
 
         [HttpPut("{id}")]
         [Consumes("multipart/form-data")]
-        public async Task<IActionResult> Edit( int id, [FromForm] Book book, IFormFile? img,CancellationToken cancellationToken)
+        public async Task<IActionResult> Edit(int id, [FromForm] Book book, IFormFile? img, CancellationToken cancellationToken)
         {
-            var bookInDb = await _bookRepository.GetOneAsync(e => e.BookId == id, traced: false, cancellationToken: cancellationToken);
+            var bookInDb = await _bookRepository.GetOneAsync(e => e.BookId == id, tracked: false, cancellationToken: cancellationToken);
 
-            if (img is not null)
+            if (bookInDb is null)
             {
-                if (img.Length > 0)
+                return NotFound(new { success = false, message = "Book not found" });
+            }
+
+            if (img is not null && img.Length > 0)
+            {
+                var fileName = Guid.NewGuid().ToString() + Path.GetExtension(img.FileName);
+                var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", fileName);
+
+                await using (var stream = System.IO.File.Create(filePath))
                 {
-                  
-                    var fileName = Guid.NewGuid().ToString() + Path.GetExtension(img.FileName); 
-                    var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot\\images", fileName);
+                    await img.CopyToAsync(stream, cancellationToken);
+                }
 
-                    using (var stream = System.IO.File.Create(filePath))
-                    {
-                        img.CopyTo(stream);
-                    }
-
-                    // Remove old Img in wwwroot
-                    var oldPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot\\images", bookInDb!.Img);
+                // Remove old Img in wwwroot
+                if (!string.IsNullOrEmpty(bookInDb.Img))
+                {
+                    var oldPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", bookInDb.Img);
                     if (System.IO.File.Exists(oldPath))
                     {
                         System.IO.File.Delete(oldPath);
                     }
-
-                    // Save Img in db
-                    book.Img = fileName;
                 }
+
+                // Save Img in db
+                book.Img = fileName;
             }
             else
             {
-                book.Img = bookInDb!.Img;
+                book.Img = bookInDb.Img;
             }
 
+            book.BookId = id;
             _bookRepository.Update(book);
             await _bookRepository.CommitAsync(cancellationToken);
 
@@ -167,19 +182,21 @@ namespace StoreBook.Areas
         }
 
         [HttpDelete("{id}")]
-        
         public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
         {
             var product = await _bookRepository.GetOneAsync(e => e.BookId == id, null, false, cancellationToken: cancellationToken);
 
             if (product is null)
-                return RedirectToAction("NotFoundPage", "Home");
+                return NotFound(new { success = false, message = "Book not found" });
 
             // Remove old Img in wwwroot
-            var oldPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot\\images", product.Img);
-            if (System.IO.File.Exists(oldPath))
+            if (!string.IsNullOrEmpty(product.Img))
             {
-                System.IO.File.Delete(oldPath);
+                var oldPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", product.Img);
+                if (System.IO.File.Exists(oldPath))
+                {
+                    System.IO.File.Delete(oldPath);
+                }
             }
 
             _bookRepository.Delete(product);

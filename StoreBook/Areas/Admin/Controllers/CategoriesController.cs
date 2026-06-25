@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using StoreBook.Models;
 using StoreBook.Repositories.IRepository;
@@ -7,6 +8,7 @@ namespace StoreBook.Areas.Admin.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class CategoriesController : ControllerBase
     {
         public IRepository<Category> _categoryRepository { get; }
@@ -44,12 +46,17 @@ namespace StoreBook.Areas.Admin.Controllers
 
             return Ok();
         }
-        [HttpDelete("id")]
+        [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
         {
             var category = await _categoryRepository.GetOneAsync(e => e.Id == id, cancellationToken: cancellationToken);
 
-            _categoryRepository.Delete(category!);
+            if (category is null)
+            {
+                return NotFound(new { message = "Category not found" });
+            }
+
+            _categoryRepository.Delete(category);
             await _categoryRepository.CommitAsync(cancellationToken);
 
             return Ok();

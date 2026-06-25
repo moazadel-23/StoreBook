@@ -32,15 +32,7 @@ namespace StoreBook.Repositories
         }
         public async Task CommitAsync(CancellationToken cancellationToken = default)
         {
-            try
-            {
-                var saveInDb = await _dbContext.SaveChangesAsync(cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex.Message);
-            }
-           
+            await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
         public async Task<IEnumerable<T>> GetAsync(
@@ -70,10 +62,10 @@ namespace StoreBook.Repositories
         public async Task<T?> GetOneAsync(
          Expression<Func<T, bool>> expression,
          Expression<Func<T, object>>[]? include = null,
-         bool traced = true,
+         bool tracked = true,
          CancellationToken cancellationToken = default)
         {
-            var result = await GetAsync(expression, include, traced, cancellationToken);
+            var result = await GetAsync(expression, include, tracked, cancellationToken);
             return result.FirstOrDefault();
         }
     }
